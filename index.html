@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Planning Nounou</title>
+<meta name="description" content="Planning mensuel de garde à domicile : horaires matin/soir, calcul des heures et du montant à payer, verrouillage au paiement, export PDF.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%220.9em%22%20font-size%3D%2290%22%3E%F0%9F%97%93%EF%B8%8F%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="app-shell" id="app-shell">
+  <header class="app-header">
+    <div>
+      <p class="brand-eyebrow">Garde à domicile</p>
+      <h1>Planning de la nounou</h1>
+      <div class="nanny-field">
+        <span>pour</span>
+        <input id="nanny-name" type="text" placeholder="prénom de la nounou" aria-label="Prénom de la nounou">
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="settings-toggle" aria-pressed="false" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13.5a1.7 1.7 0 0 0 .34 1.87l.06.06a2.06 2.06 0 1 1-2.92 2.92l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56v.17a2.06 2.06 0 1 1-4.12 0v-.09a1.7 1.7 0 0 0-1.11-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2.06 2.06 0 1 1-2.92-2.92l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.56-1.03h-.17a2.06 2.06 0 1 1 0-4.12h.09a1.7 1.7 0 0 0 1.56-1.11 1.7 1.7 0 0 0-.34-1.87l-.06-.06a2.06 2.06 0 1 1 2.92-2.92l.06.06a1.7 1.7 0 0 0 1.87.34h.08a1.7 1.7 0 0 0 1.03-1.56v-.17a2.06 2.06 0 1 1 4.12 0v.09a1.7 1.7 0 0 0 1.03 1.56h.08a1.7 1.7 0 0 0 1.87-.34l.06-.06a2.06 2.06 0 1 1 2.92 2.92l-.06.06a1.7 1.7 0 0 0-.34 1.87v.08a1.7 1.7 0 0 0 1.56 1.03h.17a2.06 2.06 0 1 1 0 4.12h-.09a1.7 1.7 0 0 0-1.56 1.03z"/></svg>
+        Réglages
+      </button>
+      <button class="icon-btn" id="export-json" type="button" title="Télécharger toutes les données du planning dans un fichier JSON">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Sauvegarder JSON
+      </button>
+      <button class="icon-btn" id="import-json" type="button" title="Remplacer les données actuelles par un fichier JSON de sauvegarde">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M8 7l4-4 4 4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+        Importer JSON
+      </button>
+      <input type="file" id="import-json-input" accept="application/json,.json" hidden>
+    </div>
+  </header>
+
+  <div class="summary-card">
+    <div class="month-nav">
+      <button id="prev-month" type="button" aria-label="Mois précédent">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 6l-6 6 6 6"/></svg>
+      </button>
+      <div class="month-title">
+        <h2 id="month-title">—</h2>
+        <button class="today-jump" id="today-jump" type="button" hidden>Revenir à ce mois-ci</button>
+      </div>
+      <button id="next-month" type="button" aria-label="Mois suivant">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 6l6 6-6 6"/></svg>
+      </button>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat">
+        <p class="stat-label">Heures ce mois</p>
+        <p class="stat-value" id="stat-hours">0h</p>
+      </div>
+      <div class="stat">
+        <p class="stat-label">Total à payer</p>
+        <p class="stat-value" id="stat-price">0,00&nbsp;€</p>
+        <p class="stat-subnote" id="stat-price-subnote" hidden></p>
+      </div>
+      <div class="stat status">
+        <p class="stat-label">Statut</p>
+        <p class="stat-value" id="stat-status">—</p>
+      </div>
+    </div>
+
+    <div class="action-row" id="action-row">
+      <!-- filled by JS: payer / annuler + pdf -->
+      <span class="save-note" id="save-note"></span>
+    </div>
+
+    <div class="observations-field">
+      <label for="month-observations">Observations du mois</label>
+      <textarea id="month-observations" rows="2" placeholder="Notes, remarques, événements particuliers…"></textarea>
+    </div>
+
+    <div class="adjustment-field">
+      <label for="adjustment-input">Ajustement (+/‑) ce mois-ci</label>
+      <div class="rate-input-wrap">
+        <input type="number" id="adjustment-input" step="0.5">
+        <span>€</span>
+      </div>
+      <p class="adjustment-hint">Montant ajouté (ou retiré si négatif) au total à payer de ce mois.</p>
+    </div>
+
+    <div class="settings-panel" id="settings-panel" hidden>
+      <div class="field">
+        <label for="matin-start">Matin — début</label>
+        <div class="range-inputs">
+          <input type="time" id="matin-start">
+          <span>→</span>
+          <input type="time" id="matin-end">
+        </div>
+      </div>
+      <div class="field">
+        <label for="soir-start">Soir — début</label>
+        <div class="range-inputs">
+          <input type="time" id="soir-start">
+          <span>→</span>
+          <input type="time" id="soir-end">
+        </div>
+      </div>
+      <div class="field rate-field">
+        <label for="rate-input">Tarif horaire</label>
+        <div class="rate-input-wrap">
+          <input type="number" id="rate-input" min="0" step="0.5">
+          <span>€ / h</span>
+        </div>
+      </div>
+      <div class="field wide">
+        <label>Jours estompés dans le calendrier</label>
+        <div class="weekday-toggle-row" id="muted-weekday-row"></div>
+      </div>
+      <p class="settings-hint">Ces horaires s'appliquent au mois affiché. Les mois déjà créés gardent les horaires qui étaient en vigueur au moment de la saisie. Un jour estompé reste cliquable, il est seulement affiché en plus clair.</p>
+    </div>
+  </div>
+
+  <div class="calendar-wrap">
+    <div class="weekday-row">
+      <div>Lun</div><div>Mar</div><div>Mer</div><div>Jeu</div><div>Ven</div><div>Sam</div><div>Dim</div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+  </div>
+
+  <div class="legend">
+    <span><i class="matin"></i>Matin</span>
+    <span><i class="soir"></i>Soir</span>
+    <span><i class="cancelled"></i>Annulé</span>
+    <span><i class="retro"></i>Modifié après coup</span>
+  </div>
+
+  <footer class="app-footer">Cliquez sur Matin ou Soir dans chaque jour pour composer le planning.</footer>
+</div>
+
+<!-- Printable sheet, hidden on screen, shown only when printing -->
+<div id="print-sheet"></div>
+
+<!-- Day editor modal: custom hours for a single day -->
+<div class="day-editor-backdrop no-print" id="day-editor-backdrop" hidden>
+  <div class="day-editor" role="dialog" aria-modal="true" aria-labelledby="day-editor-title">
+    <div class="day-editor-head">
+      <h3 id="day-editor-title">—</h3>
+      <button class="day-editor-close" id="day-editor-close" type="button" aria-label="Fermer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div class="day-editor-body" id="day-editor-body"></div>
+  </div>
+</div>
+<script src="js/app.js"></script>
+</body>
+</html>
