@@ -175,8 +175,74 @@
     if(el) el.textContent = text;
   }
 
+  // ---------- Supabase sync (standalone / phone) ----------
+  var DIRTY_KEY = "nounou-planning-dirty-v1";
+  var ROW_ID = "main";
+  var pushing = false;
+
+  function supabaseReady(){
+    return typeof SUPABASE_URL === "string" && SUPABASE_URL.indexOf("http") === 0 && SUPABASE_URL.indexOf("VOTRE") < 0;
+  }
+  function sbHeaders(extra){
+    var h = { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json" };
+    for(var k in extra) h[k] = extra[k];
+    return h;
+  }
+  function isDirty(){ try{ return localStorage.getItem(DIRTY_KEY) === "1"; }catch(e){ return false; } }
+  function setDirty(v){ try{ if(v) localStorage.setItem(DIRTY_KEY, "1"); else localStorage.removeItem(DIRTY_KEY); }catch(e){} }
+
+  function sbFetchRemote(){
+    return fetch(SUPABASE_URL + "/rest/v1/planning?id=eq." + ROW_ID + "&select=state", { headers: sbHeaders(), cache: "no-store" })
+      .then(function(res){
+        if(!res.ok) throw new Error("HTTP " + res.status);
+        return res.json();
+      }).then(function(rows){ return rows.length ? rows[0].state : null; });
+  }
+
+  function sbPush(){
+    if(pushing) return Promise.resolve();
+    pushing = true;
+    setSaveNote("Synchro…");
+    var snapshot = JSON.stringify(state);
+    return fetch(SUPABASE_URL + "/rest/v1/planning", {
+      method: "POST",
+      headers: sbHeaders({ Prefer: "resolution=merge-duplicates,return=minimal" }),
+      body: JSON.stringify({ id: ROW_ID, state: state, updated_at: new Date().toISOString() })
+    }).then(function(res){
+      if(!res.ok) throw new Error("HTTP " + res.status);
+      // only clear the flag if nothing changed while the request was in flight
+      if(JSON.stringify(state) === snapshot) setDirty(false);
+      setSaveNote("À jour à " + pad(new Date().getHours()) + ":" + pad(new Date().getMinutes()));
+    }).catch(function(){
+      setSaveNote("Hors ligne — modifications en attente");
+    }).then(function(){
+      pushing = false;
+      if(isDirty() && navigator.onLine !== false && JSON.stringify(state) !== snapshot) return sbPush();
+    });
+  }
+
+  // Pull the shared state; local unsent edits always win (they get pushed instead).
+  function sbSync(){
+    if(pushing) return;
+    if(isDirty()){ sbPush(); return; }
+    sbFetchRemote().then(function(remote){
+      if(remote === null){
+        if(loadLocalState()){ setDirty(true); sbPush(); } else setSaveNote("À jour");
+        return;
+      }
+      var fresh = normalizeState(remote);
+      if(JSON.stringify(fresh) !== JSON.stringify(state)){
+        state = fresh; persistLocal(); render();
+      }
+      setSaveNote("À jour à " + pad(new Date().getHours()) + ":" + pad(new Date().getMinutes()));
+    }).catch(function(){
+      setSaveNote("Hors ligne");
+    });
+  }
+
   function publishState(){
     persistLocal();
+    if(supabaseReady() && !artifactAPI){ setDirty(true); sbPush(); return; }
     if(!artifactAPI) return;
     var payload = JSON.stringify(state, null, 2);
     artifactAPI.publish({ "data/state.json": payload }).then(function(){
@@ -1164,10 +1230,14 @@
 
     var hasClaudeHost = (typeof window.claude !== "undefined" && window.claude && window.claude.use);
     if(!hasClaudeHost){
-      // Standalone page (opened locally, e.g. from the Finder on a Mac, or
-      // served by a plain web server): there is no claude.ai host to sync
-      // with, so skip the network round-trip and rely on localStorage —
-      // avoids a pointless failed fetch() and console noise.
+      // Standalone page (phone, computer, GitHub Pages): sync through Supabase
+      // when configured, otherwise stay on localStorage only.
+      if(supabaseReady()){
+        sbSync();
+        setInterval(sbSync, 60000);
+        document.addEventListener("visibilitychange", function(){ if(!document.hidden) sbSync(); });
+        window.addEventListener("online", sbSync);
+      }
       return;
     }
 
