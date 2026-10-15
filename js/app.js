@@ -175,28 +175,33 @@
     if(el) el.textContent = text;
   }
 
-  // ---------- Supabase sync (standalone / phone) ----------
+  // ---------- Firebase sync (standalone / phone) ----------
   var DIRTY_KEY = "nounou-planning-dirty-v1";
   var ROW_ID = "main";
   var pushing = false;
 
-  function supabaseReady(){
-    return typeof SUPABASE_URL === "string" && SUPABASE_URL.indexOf("http") === 0 && SUPABASE_URL.indexOf("VOTRE") < 0;
+  function remoteReady(){
+    return typeof FIREBASE_PROJECT_ID === "string" && FIREBASE_PROJECT_ID.length > 0 && FIREBASE_PROJECT_ID.indexOf("VOTRE") < 0 &&
+           typeof FIREBASE_API_KEY === "string" && FIREBASE_API_KEY.indexOf("VOTRE") < 0;
   }
-  function sbHeaders(extra){
-    var h = { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY, "Content-Type": "application/json" };
-    for(var k in extra) h[k] = extra[k];
-    return h;
+  // Whole planning stored as one JSON string in a single Firestore document.
+  function docUrl(){
+    return "https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT_ID +
+           "/databases/(default)/documents/planning/" + ROW_ID;
   }
   function isDirty(){ try{ return localStorage.getItem(DIRTY_KEY) === "1"; }catch(e){ return false; } }
   function setDirty(v){ try{ if(v) localStorage.setItem(DIRTY_KEY, "1"); else localStorage.removeItem(DIRTY_KEY); }catch(e){} }
 
   function sbFetchRemote(){
-    return fetch(SUPABASE_URL + "/rest/v1/planning?id=eq." + ROW_ID + "&select=state", { headers: sbHeaders(), cache: "no-store" })
+    return fetch(docUrl() + "?key=" + encodeURIComponent(FIREBASE_API_KEY), { cache: "no-store" })
       .then(function(res){
+        if(res.status === 404) return null;
         if(!res.ok) throw new Error("HTTP " + res.status);
         return res.json();
-      }).then(function(rows){ return rows.length ? rows[0].state : null; });
+      }).then(function(doc){
+        if(!doc || !doc.fields || !doc.fields.json) return null;
+        return JSON.parse(doc.fields.json.stringValue);
+      });
   }
 
   function sbPush(){
@@ -204,10 +209,10 @@
     pushing = true;
     setSaveNote("Synchro…");
     var snapshot = JSON.stringify(state);
-    return fetch(SUPABASE_URL + "/rest/v1/planning", {
-      method: "POST",
-      headers: sbHeaders({ Prefer: "resolution=merge-duplicates,return=minimal" }),
-      body: JSON.stringify({ id: ROW_ID, state: state, updated_at: new Date().toISOString() })
+    return fetch(docUrl() + "?key=" + encodeURIComponent(FIREBASE_API_KEY) + "&updateMask.fieldPaths=json", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields: { json: { stringValue: snapshot } } })
     }).then(function(res){
       if(!res.ok) throw new Error("HTTP " + res.status);
       // only clear the flag if nothing changed while the request was in flight
@@ -242,7 +247,7 @@
 
   function publishState(){
     persistLocal();
-    if(supabaseReady() && !artifactAPI){ setDirty(true); sbPush(); return; }
+    if(remoteReady() && !artifactAPI){ setDirty(true); sbPush(); return; }
     if(!artifactAPI) return;
     var payload = JSON.stringify(state, null, 2);
     artifactAPI.publish({ "data/state.json": payload }).then(function(){
@@ -1230,9 +1235,9 @@
 
     var hasClaudeHost = (typeof window.claude !== "undefined" && window.claude && window.claude.use);
     if(!hasClaudeHost){
-      // Standalone page (phone, computer, GitHub Pages): sync through Supabase
+      // Standalone page (phone, computer, GitHub Pages): sync through Firebase
       // when configured, otherwise stay on localStorage only.
-      if(supabaseReady()){
+      if(remoteReady()){
         sbSync();
         setInterval(sbSync, 60000);
         document.addEventListener("visibilitychange", function(){ if(!document.hidden) sbSync(); });
